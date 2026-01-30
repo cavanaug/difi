@@ -3,6 +3,8 @@ package ui
 import (
 	"fmt"
 	"io"
+	"math"
+	"strconv"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/list"
@@ -37,6 +39,9 @@ type Model struct {
 	diffLines   []string
 	diffCursor  int
 
+	// Input State for Vim Motions
+	inputBuffer string
+
 	// UI State
 	focus    Focus
 	showHelp bool
@@ -62,6 +67,7 @@ func NewModel() Model {
 		currentBranch: git.GetCurrentBranch(),
 		repoName:      git.GetRepoName(),
 		showHelp:      false,
+		inputBuffer:   "",
 	}
 
 	if len(items) > 0 {
@@ -79,9 +85,24 @@ func (m Model) Init() tea.Cmd {
 	return nil
 }
 
+func (m *Model) getRepeatCount() int {
+	if m.inputBuffer == "" {
+		return 1
+	}
+	count, err := strconv.Atoi(m.inputBuffer)
+	if err != nil {
+		return 1
+	}
+	m.inputBuffer = ""
+	return count
+}
+
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 	var cmds []tea.Cmd
+
+	// Flag to track if we manually handled navigation
+	keyHandled := false
 
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
@@ -90,19 +111,21 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.updateSizes()
 
 	case tea.KeyMsg:
-		// Toggle Help
+		if len(msg.String()) == 1 && strings.ContainsAny(msg.String(), "0123456789") {
+			m.inputBuffer += msg.String()
+			return m, nil
+		}
+
 		if msg.String() == "?" {
 			m.showHelp = !m.showHelp
 			m.updateSizes()
 			return m, nil
 		}
 
-		// Quit
 		if msg.String() == "q" || msg.String() == "ctrl+c" {
 			return m, tea.Quit
 		}
 
-		// Navigation
 		switch msg.String() {
 		case "tab":
 			if m.focus == FocusTree {
@@ -110,14 +133,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			} else {
 				m.focus = FocusTree
 			}
+			m.inputBuffer = ""
 
 		case "l", "]", "ctrl+l", "right":
 			m.focus = FocusDiff
+			m.inputBuffer = ""
 
 		case "h", "[", "ctrl+h", "left":
 			m.focus = FocusTree
+			m.inputBuffer = ""
 
-		// Editing
 		case "e", "enter":
 			if m.selectedPath != "" {
 				line := 0
@@ -126,35 +151,56 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				} else {
 					line = git.CalculateFileLine(m.diffContent, 0)
 				}
+				m.inputBuffer = ""
 				return m, git.OpenEditorCmd(m.selectedPath, line)
 			}
 
-		// Diff Cursor
+		// Vim Motions
 		case "j", "down":
-			if m.focus == FocusDiff {
-				if m.diffCursor < len(m.diffLines)-1 {
-					m.diffCursor++
-					if m.diffCursor >= m.diffViewport.YOffset+m.diffViewport.Height {
-						m.diffViewport.LineDown(1)
+			keyHandled = true // Mark as handled so we don't pass to list.Update()
+			count := m.getRepeatCount()
+			for i := 0; i < count; i++ {
+				if m.focus == FocusDiff {
+					if m.diffCursor < len(m.diffLines)-1 {
+						m.diffCursor++
+						if m.diffCursor >= m.diffViewport.YOffset+m.diffViewport.Height {
+							m.diffViewport.LineDown(1)
+						}
 					}
+				} else {
+					m.fileTree.CursorDown()
 				}
 			}
+			m.inputBuffer = ""
+
 		case "k", "up":
-			if m.focus == FocusDiff {
-				if m.diffCursor > 0 {
-					m.diffCursor--
-					if m.diffCursor < m.diffViewport.YOffset {
-						m.diffViewport.LineUp(1)
+			keyHandled = true // Mark as handled
+			count := m.getRepeatCount()
+			for i := 0; i < count; i++ {
+				if m.focus == FocusDiff {
+					if m.diffCursor > 0 {
+						m.diffCursor--
+						if m.diffCursor < m.diffViewport.YOffset {
+							m.diffViewport.LineUp(1)
+						}
 					}
+				} else {
+					m.fileTree.CursorUp()
 				}
 			}
+			m.inputBuffer = ""
+
+		default:
+			m.inputBuffer = ""
 		}
 	}
 
 	// Update Components
 	if m.focus == FocusTree {
-		m.fileTree, cmd = m.fileTree.Update(msg)
-		cmds = append(cmds, cmd)
+		if !keyHandled {
+			m.fileTree, cmd = m.fileTree.Update(msg)
+			cmds = append(cmds, cmd)
+		}
 
 		if item, ok := m.fileTree.SelectedItem().(tree.TreeItem); ok && !item.IsDir {
 			if item.FullPath != m.selectedPath {
@@ -226,12 +272,19 @@ func (m Model) View() string {
 
 	for i := start; i < end; i++ {
 		line := m.diffLines[i]
+
+		// Relative Numbers
+		distance := int(math.Abs(float64(i - m.diffCursor)))
+		relNum := fmt.Sprintf("%d", distance)
+		lineNumStr := LineNumberStyle.Render(relNum)
+
 		if m.focus == FocusDiff && i == m.diffCursor {
 			line = SelectedItemStyle.Render(line)
 		} else {
 			line = "  " + line
 		}
-		renderedDiff.WriteString(line + "\n")
+
+		renderedDiff.WriteString(lineNumStr + line + "\n")
 	}
 
 	diffView := DiffStyle.Copy().
@@ -241,10 +294,14 @@ func (m Model) View() string {
 
 	mainPanes := lipgloss.JoinHorizontal(lipgloss.Top, treeView, diffView)
 
-	// Status Bar
 	repoSection := StatusKeyStyle.Render(" " + m.repoName)
 	divider := StatusDividerStyle.Render("│")
-	branchSection := StatusBarStyle.Render(fmt.Sprintf(" %s ↔ %s", m.currentBranch, TargetBranch))
+
+	statusText := fmt.Sprintf(" %s ↔ %s", m.currentBranch, TargetBranch)
+	if m.inputBuffer != "" {
+		statusText += fmt.Sprintf(" [Cmd: %s]", m.inputBuffer)
+	}
+	branchSection := StatusBarStyle.Render(statusText)
 
 	leftStatus := lipgloss.JoinHorizontal(lipgloss.Center, repoSection, divider, branchSection)
 	rightStatus := StatusBarStyle.Render("? Help")
@@ -256,7 +313,6 @@ func (m Model) View() string {
 			lipgloss.PlaceHorizontal(m.width-lipgloss.Width(leftStatus)-lipgloss.Width(rightStatus), lipgloss.Right, rightStatus),
 		))
 
-	// Help Drawer
 	var finalView string
 	if m.showHelp {
 		col1 := lipgloss.JoinVertical(lipgloss.Left,
@@ -269,10 +325,10 @@ func (m Model) View() string {
 		)
 		col3 := lipgloss.JoinVertical(lipgloss.Left,
 			HelpTextStyle.Render("Tab   Switch Panel"),
-			HelpTextStyle.Render("Ent/e Edit File"),
+			HelpTextStyle.Render("Num   Motion Count"),
 		)
 		col4 := lipgloss.JoinVertical(lipgloss.Left,
-			HelpTextStyle.Render("q     Quit"),
+			HelpTextStyle.Render("e     Edit File"),
 			HelpTextStyle.Render("?     Close Help"),
 		)
 
