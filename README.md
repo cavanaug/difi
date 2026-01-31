@@ -7,10 +7,6 @@
   <img src="https://img.shields.io/github/license/oug-t/difi?style=for-the-badge&color=2e3440" />
 </p>
 
-<p align="center">
-  <strong>A calm, focused way to review Git diffs.</strong>
-</p>
-
 <img width="2560" height="1440" alt="image" src="https://github.com/user-attachments/assets/fbea297a-b99d-4e98-b369-2925a7651a13" />
 
 ## Why difi?
@@ -95,6 +91,7 @@ Contributions are especially welcome in:
 ---
 
 <p align="center"> Made with ❤️ by <a href="https://github.com/oug-t">oug-t</a> </p>
+
 
 
 
