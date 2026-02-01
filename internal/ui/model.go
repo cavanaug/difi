@@ -385,28 +385,23 @@ func (m *Model) updateSizes() {
 		reservedHeight += 6
 	}
 
-	// Calculate main area height
 	contentHeight := m.height - reservedHeight
 	if contentHeight < 1 {
 		contentHeight = 1
 	}
 
-	// Calculate widths
 	treeWidth := int(float64(m.width) * 0.20)
 	if treeWidth < 20 {
 		treeWidth = 20
 	}
 
-	// The Tree PaneStyle has a border (1 top, 1 bottom = 2 lines).
-	// We must subtract this from the content height for the inner list.
+	// Subtract border height (2) from contentHeight
 	listHeight := contentHeight - 2
 	if listHeight < 1 {
 		listHeight = 1
 	}
 	m.fileList.SetSize(treeWidth, listHeight)
 
-	// We align the Diff Viewport height with the List height to ensure
-	// the bottom edges match visually and to prevent overflow.
 	m.diffViewport.Width = m.width - treeWidth - 2
 	m.diffViewport.Height = listHeight
 }
@@ -498,8 +493,6 @@ func (m Model) View() string {
 				renderedDiff.WriteString(lineNumRendered + line + "\n")
 			}
 
-			// Trim the trailing newline to prevent an extra empty line
-			// which pushes the layout height +1 and causes the top bar to scroll off.
 			diffContentStr := strings.TrimRight(renderedDiff.String(), "\n")
 
 			rightPaneView = DiffStyle.Copy().
@@ -661,16 +654,9 @@ func (m Model) renderEmptyState(w, h int, statusMsg string) string {
 		guides,
 	)
 
-	var verticalPad string
-	if h > lipgloss.Height(content) {
-		lines := (h - lipgloss.Height(content)) / 2
-		verticalPad = strings.Repeat("\n", lines)
-	}
-
-	return lipgloss.JoinVertical(lipgloss.Top,
-		verticalPad,
-		lipgloss.PlaceHorizontal(w, lipgloss.Center, content),
-	)
+	// Use lipgloss.Place to center the content in the available space
+	// This automatically handles vertical and horizontal centering.
+	return lipgloss.Place(w, h, lipgloss.Center, lipgloss.Center, content)
 }
 
 func stripAnsi(str string) string {
