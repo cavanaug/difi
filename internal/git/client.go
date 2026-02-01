@@ -74,13 +74,43 @@ func OpenEditorCmd(path string, lineNumber int, targetBranch string) tea.Cmd {
 	c := exec.Command(editor, args...)
 	c.Stdin, c.Stdout, c.Stderr = os.Stdin, os.Stdout, os.Stderr
 
-	// Pass the diff target branch to the editor via environment variable
-	// This enables plugins like difi.nvim to auto-configure the view
 	c.Env = append(os.Environ(), fmt.Sprintf("DIFI_TARGET=%s", targetBranch))
 
 	return tea.ExecProcess(c, func(err error) tea.Msg {
 		return EditorFinishedMsg{Err: err}
 	})
+}
+
+func DiffStats(targetBranch string) (added int, deleted int, err error) {
+	cmd := exec.Command("git", "diff", "--numstat", targetBranch)
+	out, err := cmd.Output()
+	if err != nil {
+		return 0, 0, fmt.Errorf("git diff stats error: %w", err)
+	}
+
+	lines := strings.Split(strings.TrimSpace(string(out)), "\n")
+	for _, line := range lines {
+		if line == "" {
+			continue
+		}
+		parts := strings.Fields(line)
+		if len(parts) < 2 {
+			continue
+		}
+
+		if parts[0] != "-" {
+			if n, err := strconv.Atoi(parts[0]); err == nil {
+				added += n
+			}
+		}
+
+		if parts[1] != "-" {
+			if n, err := strconv.Atoi(parts[1]); err == nil {
+				deleted += n
+			}
+		}
+	}
+	return added, deleted, nil
 }
 
 func CalculateFileLine(diffContent string, visualLineIndex int) int {
