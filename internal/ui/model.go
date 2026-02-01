@@ -24,8 +24,14 @@ const (
 	FocusDiff
 )
 
+type StatsMsg struct {
+	Added   int
+	Deleted int
+}
+
 type Model struct {
-	fileTree     list.Model
+	fileList     list.Model
+	treeState    *tree.FileTree
 	treeDelegate TreeDelegate
 	diffViewport viewport.Model
 
@@ -33,6 +39,9 @@ type Model struct {
 	currentBranch string
 	targetBranch  string
 	repoName      string
+
+	statsAdded   int
+	statsDeleted int
 
 	diffContent string
 	diffLines   []string
@@ -51,7 +60,9 @@ func NewModel(cfg config.Config, targetBranch string) Model {
 	InitStyles(cfg)
 
 	files, _ := git.ListChangedFiles(targetBranch)
-	items := tree.Build(files)
+
+	t := tree.New(files)
+	items := t.Items()
 
 	delegate := TreeDelegate{Focused: true}
 	l := list.New(items, delegate, 0, 0)
@@ -64,7 +75,8 @@ func NewModel(cfg config.Config, targetBranch string) Model {
 	l.DisableQuitKeybindings()
 
 	m := Model{
-		fileTree:      l,
+		fileList:      l,
+		treeState:     t,
 		treeDelegate:  delegate,
 		diffViewport:  viewport.New(0, 0),
 		focus:         FocusTree,
@@ -78,17 +90,34 @@ func NewModel(cfg config.Config, targetBranch string) Model {
 
 	if len(items) > 0 {
 		if first, ok := items[0].(tree.TreeItem); ok {
-			m.selectedPath = first.FullPath
+			if !first.IsDir {
+				m.selectedPath = first.FullPath
+			}
 		}
 	}
 	return m
 }
 
 func (m Model) Init() tea.Cmd {
+	var cmds []tea.Cmd
+
 	if m.selectedPath != "" {
-		return git.DiffCmd(m.targetBranch, m.selectedPath)
+		cmds = append(cmds, git.DiffCmd(m.targetBranch, m.selectedPath))
 	}
-	return nil
+
+	cmds = append(cmds, fetchStatsCmd(m.targetBranch))
+
+	return tea.Batch(cmds...)
+}
+
+func fetchStatsCmd(target string) tea.Cmd {
+	return func() tea.Msg {
+		added, deleted, err := git.DiffStats(target)
+		if err != nil {
+			return nil
+		}
+		return StatsMsg{Added: added, Deleted: deleted}
+	}
 }
 
 func (m *Model) getRepeatCount() int {
@@ -115,16 +144,19 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.height = msg.Height
 		m.updateSizes()
 
+	case StatsMsg:
+		m.statsAdded = msg.Added
+		m.statsDeleted = msg.Deleted
+
 	case tea.KeyMsg:
 		if msg.String() == "q" || msg.String() == "ctrl+c" {
 			return m, tea.Quit
 		}
 
-		if len(m.fileTree.Items()) == 0 {
+		if len(m.fileList.Items()) == 0 {
 			return m, nil
 		}
 
-		// Handle z-prefix commands (zz, zt, zb)
 		if m.pendingZ {
 			m.pendingZ = false
 			if m.focus == FocusDiff {
@@ -158,6 +190,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 		case "tab":
 			if m.focus == FocusTree {
+				if item, ok := m.fileList.SelectedItem().(tree.TreeItem); ok && item.IsDir {
+					return m, nil
+				}
 				m.focus = FocusDiff
 			} else {
 				m.focus = FocusTree
@@ -166,6 +201,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.inputBuffer = ""
 
 		case "l", "]", "ctrl+l", "right":
+			if m.focus == FocusTree {
+				if item, ok := m.fileList.SelectedItem().(tree.TreeItem); ok && item.IsDir {
+					return m, nil
+				}
+			}
 			m.focus = FocusDiff
 			m.updateTreeFocus()
 			m.inputBuffer = ""
@@ -175,8 +215,29 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.updateTreeFocus()
 			m.inputBuffer = ""
 
-		case "e", "enter":
+		case "enter":
+			if m.focus == FocusTree {
+				if i, ok := m.fileList.SelectedItem().(tree.TreeItem); ok && i.IsDir {
+					m.treeState.ToggleExpand(i.FullPath)
+					m.fileList.SetItems(m.treeState.Items())
+					return m, nil
+				}
+			}
 			if m.selectedPath != "" {
+				if i, ok := m.fileList.SelectedItem().(tree.TreeItem); ok && !i.IsDir {
+					// proceed
+				} else {
+					return m, nil
+				}
+			}
+			fallthrough
+
+		case "e":
+			if m.selectedPath != "" {
+				if i, ok := m.fileList.SelectedItem().(tree.TreeItem); ok && i.IsDir {
+					return m, nil
+				}
+
 				line := 0
 				if m.focus == FocusDiff {
 					line = git.CalculateFileLine(m.diffContent, m.diffCursor)
@@ -184,18 +245,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					line = git.CalculateFileLine(m.diffContent, 0)
 				}
 				m.inputBuffer = ""
-				// Integration Point: Pass targetBranch to the editor command
 				return m, git.OpenEditorCmd(m.selectedPath, line, m.targetBranch)
 			}
 
-		// Viewport trigger
 		case "z":
 			if m.focus == FocusDiff {
 				m.pendingZ = true
 				return m, nil
 			}
 
-		// Cursor screen positioning (H, M, L)
 		case "H":
 			if m.focus == FocusDiff {
 				m.diffCursor = m.diffViewport.YOffset
@@ -221,7 +279,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 
-		// Page navigation
 		case "ctrl+d":
 			if m.focus == FocusDiff {
 				halfScreen := m.diffViewport.Height / 2
@@ -251,13 +308,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if m.focus == FocusDiff {
 					if m.diffCursor < len(m.diffLines)-1 {
 						m.diffCursor++
-						// Scroll if hitting bottom edge
 						if m.diffCursor >= m.diffViewport.YOffset+m.diffViewport.Height {
 							m.diffViewport.LineDown(1)
 						}
 					}
 				} else {
-					m.fileTree.CursorDown()
+					m.fileList.CursorDown()
 				}
 			}
 			m.inputBuffer = ""
@@ -269,13 +325,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if m.focus == FocusDiff {
 					if m.diffCursor > 0 {
 						m.diffCursor--
-						// Scroll if hitting top edge
 						if m.diffCursor < m.diffViewport.YOffset {
 							m.diffViewport.LineUp(1)
 						}
 					}
 				} else {
-					m.fileTree.CursorUp()
+					m.fileList.CursorUp()
 				}
 			}
 			m.inputBuffer = ""
@@ -285,14 +340,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	}
 
-	if len(m.fileTree.Items()) > 0 && m.focus == FocusTree {
+	if len(m.fileList.Items()) > 0 && m.focus == FocusTree {
 		if !keyHandled {
-			m.fileTree, cmd = m.fileTree.Update(msg)
+			m.fileList, cmd = m.fileList.Update(msg)
 			cmds = append(cmds, cmd)
 		}
 
-		if item, ok := m.fileTree.SelectedItem().(tree.TreeItem); ok && !item.IsDir {
-			if item.FullPath != m.selectedPath {
+		if item, ok := m.fileList.SelectedItem().(tree.TreeItem); ok {
+			if !item.IsDir && item.FullPath != m.selectedPath {
 				m.selectedPath = item.FullPath
 				m.diffCursor = 0
 				m.diffViewport.GotoTop()
@@ -324,29 +379,41 @@ func (m *Model) centerDiffCursor() {
 }
 
 func (m *Model) updateSizes() {
-	reservedHeight := 1
+	// 1 line Top Bar + 1 line Bottom Bar = 2 reserved
+	reservedHeight := 2
 	if m.showHelp {
 		reservedHeight += 6
 	}
 
+	// Calculate main area height
 	contentHeight := m.height - reservedHeight
 	if contentHeight < 1 {
 		contentHeight = 1
 	}
 
+	// Calculate widths
 	treeWidth := int(float64(m.width) * 0.20)
 	if treeWidth < 20 {
 		treeWidth = 20
 	}
 
-	m.fileTree.SetSize(treeWidth, contentHeight)
+	// The Tree PaneStyle has a border (1 top, 1 bottom = 2 lines).
+	// We must subtract this from the content height for the inner list.
+	listHeight := contentHeight - 2
+	if listHeight < 1 {
+		listHeight = 1
+	}
+	m.fileList.SetSize(treeWidth, listHeight)
+
+	// We align the Diff Viewport height with the List height to ensure
+	// the bottom edges match visually and to prevent overflow.
 	m.diffViewport.Width = m.width - treeWidth - 2
-	m.diffViewport.Height = contentHeight
+	m.diffViewport.Height = listHeight
 }
 
 func (m *Model) updateTreeFocus() {
 	m.treeDelegate.Focused = (m.focus == FocusTree)
-	m.fileTree.SetDelegate(m.treeDelegate)
+	m.fileList.SetDelegate(m.treeDelegate)
 }
 
 func (m Model) View() string {
@@ -354,182 +421,237 @@ func (m Model) View() string {
 		return "Loading..."
 	}
 
-	if len(m.fileTree.Items()) == 0 {
-		return m.viewEmptyState()
-	}
+	topBar := m.renderTopBar()
 
-	// Panes
-	treeStyle := PaneStyle
-	if m.focus == FocusTree {
-		treeStyle = FocusedPaneStyle
-	} else {
-		treeStyle = PaneStyle
-	}
-
-	treeView := treeStyle.Copy().
-		Width(m.fileTree.Width()).
-		Height(m.fileTree.Height()).
-		Render(m.fileTree.View())
-
-	var renderedDiff strings.Builder
-	start := m.diffViewport.YOffset
-	end := start + m.diffViewport.Height
-	if end > len(m.diffLines) {
-		end = len(m.diffLines)
-	}
-
-	for i := start; i < end; i++ {
-		line := m.diffLines[i]
-
-		var numStr string
-		mode := CurrentConfig.UI.LineNumbers
-
-		if mode == "hidden" {
-			numStr = ""
-		} else {
-			isCursor := (i == m.diffCursor)
-			if isCursor && mode == "hybrid" {
-				realLine := git.CalculateFileLine(m.diffContent, m.diffCursor)
-				numStr = fmt.Sprintf("%d", realLine)
-			} else if isCursor && mode == "relative" {
-				numStr = "0"
-			} else if mode == "absolute" {
-				numStr = fmt.Sprintf("%d", i+1)
-			} else {
-				dist := int(math.Abs(float64(i - m.diffCursor)))
-				numStr = fmt.Sprintf("%d", dist)
-			}
-		}
-
-		lineNumRendered := ""
-		if numStr != "" {
-			lineNumRendered = LineNumberStyle.Render(numStr)
-		}
-
-		if m.focus == FocusDiff && i == m.diffCursor {
-			cleanLine := stripAnsi(line)
-			line = DiffSelectionStyle.Render("  " + cleanLine)
-		} else {
-			line = "  " + line
-		}
-
-		renderedDiff.WriteString(lineNumRendered + line + "\n")
-	}
-
-	diffView := DiffStyle.Copy().
-		Width(m.diffViewport.Width).
-		Height(m.diffViewport.Height).
-		Render(renderedDiff.String())
-
-	mainPanes := lipgloss.JoinHorizontal(lipgloss.Top, treeView, diffView)
-
-	// Bottom area
-	repoSection := StatusKeyStyle.Render(" " + m.repoName)
-	divider := StatusDividerStyle.Render("│")
-
-	statusText := fmt.Sprintf(" %s ↔ %s", m.currentBranch, m.targetBranch)
-	if m.inputBuffer != "" {
-		statusText += fmt.Sprintf(" [Cmd: %s]", m.inputBuffer)
-	}
-	branchSection := StatusBarStyle.Render(statusText)
-
-	leftStatus := lipgloss.JoinHorizontal(lipgloss.Center, repoSection, divider, branchSection)
-	rightStatus := StatusBarStyle.Render("? Help")
-
-	statusBar := StatusBarStyle.Copy().
-		Width(m.width).
-		Render(lipgloss.JoinHorizontal(lipgloss.Top,
-			leftStatus,
-			lipgloss.PlaceHorizontal(m.width-lipgloss.Width(leftStatus)-lipgloss.Width(rightStatus), lipgloss.Right, rightStatus),
-		))
-
-	var finalView string
+	var mainContent string
+	contentHeight := m.height - 2
 	if m.showHelp {
-		col1 := lipgloss.JoinVertical(lipgloss.Left,
-			HelpTextStyle.Render("↑/k   Move Up"),
-			HelpTextStyle.Render("↓/j   Move Down"),
-		)
-		col2 := lipgloss.JoinVertical(lipgloss.Left,
-			HelpTextStyle.Render("←/h   Left Panel"),
-			HelpTextStyle.Render("→/l   Right Panel"),
-		)
-		col3 := lipgloss.JoinVertical(lipgloss.Left,
-			HelpTextStyle.Render("C-d/u Page Dn/Up"),
-			HelpTextStyle.Render("zz/zt Scroll View"),
-		)
-		col4 := lipgloss.JoinVertical(lipgloss.Left,
-			HelpTextStyle.Render("H/M/L Move Cursor"),
-			HelpTextStyle.Render("e     Edit File"),
-		)
-
-		helpDrawer := HelpDrawerStyle.Copy().
-			Width(m.width).
-			Render(lipgloss.JoinHorizontal(lipgloss.Top,
-				col1,
-				lipgloss.NewStyle().Width(4).Render(""),
-				col2,
-				lipgloss.NewStyle().Width(4).Render(""),
-				col3,
-				lipgloss.NewStyle().Width(4).Render(""),
-				col4,
-			))
-
-		finalView = lipgloss.JoinVertical(lipgloss.Top, mainPanes, helpDrawer, statusBar)
-	} else {
-		finalView = lipgloss.JoinVertical(lipgloss.Top, mainPanes, statusBar)
+		contentHeight -= 6
+	}
+	if contentHeight < 0 {
+		contentHeight = 0
 	}
 
-	return finalView
+	if len(m.fileList.Items()) == 0 {
+		mainContent = m.renderEmptyState(m.width, contentHeight, "No changes found against "+m.targetBranch)
+	} else {
+		treeStyle := PaneStyle
+		if m.focus == FocusTree {
+			treeStyle = FocusedPaneStyle
+		} else {
+			treeStyle = PaneStyle
+		}
+
+		treeView := treeStyle.Copy().
+			Width(m.fileList.Width()).
+			Height(m.fileList.Height()).
+			Render(m.fileList.View())
+
+		var rightPaneView string
+
+		selectedItem, ok := m.fileList.SelectedItem().(tree.TreeItem)
+		if ok && selectedItem.IsDir {
+			rightPaneView = m.renderEmptyState(m.diffViewport.Width, m.diffViewport.Height, "Directory: "+selectedItem.Name)
+		} else {
+			var renderedDiff strings.Builder
+			start := m.diffViewport.YOffset
+			end := start + m.diffViewport.Height
+			if end > len(m.diffLines) {
+				end = len(m.diffLines)
+			}
+
+			for i := start; i < end; i++ {
+				line := m.diffLines[i]
+
+				var numStr string
+				mode := "relative"
+
+				if mode == "hidden" {
+					numStr = ""
+				} else {
+					isCursor := (i == m.diffCursor)
+					if isCursor && mode == "hybrid" {
+						realLine := git.CalculateFileLine(m.diffContent, m.diffCursor)
+						numStr = fmt.Sprintf("%d", realLine)
+					} else if isCursor && mode == "relative" {
+						numStr = "0"
+					} else if mode == "absolute" {
+						numStr = fmt.Sprintf("%d", i+1)
+					} else {
+						dist := int(math.Abs(float64(i - m.diffCursor)))
+						numStr = fmt.Sprintf("%d", dist)
+					}
+				}
+
+				lineNumRendered := ""
+				if numStr != "" {
+					lineNumRendered = LineNumberStyle.Render(numStr)
+				}
+
+				if m.focus == FocusDiff && i == m.diffCursor {
+					cleanLine := stripAnsi(line)
+					line = DiffSelectionStyle.Render("  " + cleanLine)
+				} else {
+					line = "  " + line
+				}
+
+				renderedDiff.WriteString(lineNumRendered + line + "\n")
+			}
+
+			// Trim the trailing newline to prevent an extra empty line
+			// which pushes the layout height +1 and causes the top bar to scroll off.
+			diffContentStr := strings.TrimRight(renderedDiff.String(), "\n")
+
+			rightPaneView = DiffStyle.Copy().
+				Width(m.diffViewport.Width).
+				Height(m.diffViewport.Height).
+				Render(diffContentStr)
+		}
+
+		mainContent = lipgloss.JoinHorizontal(lipgloss.Top, treeView, rightPaneView)
+	}
+
+	var bottomBar string
+	if m.showHelp {
+		bottomBar = m.renderHelpDrawer()
+	} else {
+		bottomBar = m.viewStatusBar()
+	}
+
+	return lipgloss.JoinVertical(lipgloss.Top, topBar, mainContent, bottomBar)
 }
 
-func (m Model) viewEmptyState() string {
+func (m Model) renderTopBar() string {
+	repo := fmt.Sprintf(" %s", m.repoName)
+	branches := fmt.Sprintf(" %s ➜ %s", m.currentBranch, m.targetBranch)
+	info := fmt.Sprintf("%s   %s", repo, branches)
+	leftSide := TopInfoStyle.Render(info)
+
+	middle := ""
+	if m.selectedPath != "" {
+		middle = lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Render(m.selectedPath)
+	}
+
+	rightSide := ""
+	if m.statsAdded > 0 || m.statsDeleted > 0 {
+		added := TopStatsAddedStyle.Render(fmt.Sprintf("+%d", m.statsAdded))
+		deleted := TopStatsDeletedStyle.Render(fmt.Sprintf("-%d", m.statsDeleted))
+		rightSide = lipgloss.JoinHorizontal(lipgloss.Center, added, deleted)
+	}
+
+	availWidth := m.width - lipgloss.Width(leftSide) - lipgloss.Width(rightSide)
+	if availWidth < 0 {
+		availWidth = 0
+	}
+
+	midWidth := lipgloss.Width(middle)
+	var centerBlock string
+	if midWidth > availWidth {
+		centerBlock = strings.Repeat(" ", availWidth)
+	} else {
+		padL := (availWidth - midWidth) / 2
+		padR := availWidth - midWidth - padL
+		centerBlock = strings.Repeat(" ", padL) + middle + strings.Repeat(" ", padR)
+	}
+
+	finalBar := lipgloss.JoinHorizontal(lipgloss.Top, leftSide, centerBlock, rightSide)
+	return TopBarStyle.Width(m.width).Render(finalBar)
+}
+
+func (m Model) viewStatusBar() string {
+	shortcuts := StatusKeyStyle.Render("? Help  q Quit  Tab Switch")
+	return StatusBarStyle.Width(m.width).Render(shortcuts)
+}
+
+func (m Model) renderHelpDrawer() string {
+	col1 := lipgloss.JoinVertical(lipgloss.Left,
+		HelpTextStyle.Render("↑/k   Move Up"),
+		HelpTextStyle.Render("↓/j   Move Down"),
+	)
+	col2 := lipgloss.JoinVertical(lipgloss.Left,
+		HelpTextStyle.Render("←/h   Left Panel"),
+		HelpTextStyle.Render("→/l   Right Panel"),
+	)
+	col3 := lipgloss.JoinVertical(lipgloss.Left,
+		HelpTextStyle.Render("C-d/u Page Dn/Up"),
+		HelpTextStyle.Render("zz/zt Scroll View"),
+	)
+	col4 := lipgloss.JoinVertical(lipgloss.Left,
+		HelpTextStyle.Render("H/M/L Move Cursor"),
+		HelpTextStyle.Render("e     Edit File"),
+	)
+
+	return HelpDrawerStyle.Copy().
+		Width(m.width).
+		Render(lipgloss.JoinHorizontal(lipgloss.Top,
+			col1,
+			lipgloss.NewStyle().Width(4).Render(""),
+			col2,
+			lipgloss.NewStyle().Width(4).Render(""),
+			col3,
+			lipgloss.NewStyle().Width(4).Render(""),
+			col4,
+		))
+}
+
+func (m Model) renderEmptyState(w, h int, statusMsg string) string {
 	logo := EmptyLogoStyle.Render("difi")
 	desc := EmptyDescStyle.Render("A calm, focused way to review Git diffs.")
-
-	statusMsg := fmt.Sprintf("✓ No changes found against '%s'", m.targetBranch)
 	status := EmptyStatusStyle.Render(statusMsg)
 
 	usageHeader := EmptyHeaderStyle.Render("Usage Patterns")
-
 	cmd1 := lipgloss.NewStyle().Foreground(ColorText).Render("difi")
 	desc1 := EmptyCodeStyle.Render("Diff against main")
-
-	cmd2 := lipgloss.NewStyle().Foreground(ColorText).Render("difi develop")
-	desc2 := EmptyCodeStyle.Render("Diff against target branch")
-
-	cmd3 := lipgloss.NewStyle().Foreground(ColorText).Render("difi HEAD~1")
-	desc3 := EmptyCodeStyle.Render("Diff against previous commit")
+	cmd2 := lipgloss.NewStyle().Foreground(ColorText).Render("difi dev")
+	desc2 := EmptyCodeStyle.Render("Diff against branch")
 
 	usageBlock := lipgloss.JoinVertical(lipgloss.Left,
 		usageHeader,
-		lipgloss.JoinHorizontal(lipgloss.Left, cmd1, desc1),
-		lipgloss.JoinHorizontal(lipgloss.Left, cmd2, desc2),
-		lipgloss.JoinHorizontal(lipgloss.Left, cmd3, desc3),
+		lipgloss.JoinHorizontal(lipgloss.Left, cmd1, "    ", desc1),
+		lipgloss.JoinHorizontal(lipgloss.Left, cmd2, "    ", desc2),
 	)
 
 	navHeader := EmptyHeaderStyle.Render("Navigation")
-
 	key1 := lipgloss.NewStyle().Foreground(ColorText).Render("Tab")
+	key2 := lipgloss.NewStyle().Foreground(ColorText).Render("j/k")
 	keyDesc1 := EmptyCodeStyle.Render("Switch panels")
-
-	key2 := lipgloss.NewStyle().Foreground(ColorText).Render("j / k")
 	keyDesc2 := EmptyCodeStyle.Render("Move cursor")
-
-	key3 := lipgloss.NewStyle().Foreground(ColorText).Render("zz/zt")
-	keyDesc3 := EmptyCodeStyle.Render("Center/Top")
 
 	navBlock := lipgloss.JoinVertical(lipgloss.Left,
 		navHeader,
-		lipgloss.JoinHorizontal(lipgloss.Left, key1, keyDesc1),
-		lipgloss.JoinHorizontal(lipgloss.Left, key2, keyDesc2),
-		lipgloss.JoinHorizontal(lipgloss.Left, key3, keyDesc3),
+		lipgloss.JoinHorizontal(lipgloss.Left, key1, "    ", keyDesc1),
+		lipgloss.JoinHorizontal(lipgloss.Left, key2, "    ", keyDesc2),
 	)
 
-	guides := lipgloss.JoinHorizontal(lipgloss.Top,
-		usageBlock,
-		lipgloss.NewStyle().Width(8).Render(""),
-		navBlock,
+	nvimHeader := EmptyHeaderStyle.Render("Neovim Integration")
+	nvim1 := lipgloss.NewStyle().Foreground(ColorText).Render("oug-t/difi.nvim")
+	nvimDesc1 := EmptyCodeStyle.Render("Install plugin")
+	nvim2 := lipgloss.NewStyle().Foreground(ColorText).Render("Press 'e'")
+	nvimDesc2 := EmptyCodeStyle.Render("Edit with context")
+
+	nvimBlock := lipgloss.JoinVertical(lipgloss.Left,
+		nvimHeader,
+		lipgloss.JoinHorizontal(lipgloss.Left, nvim1, "  ", nvimDesc1),
+		lipgloss.JoinHorizontal(lipgloss.Left, nvim2, "          ", nvimDesc2),
 	)
+
+	var guides string
+	if w > 80 {
+		guides = lipgloss.JoinHorizontal(lipgloss.Top,
+			usageBlock,
+			lipgloss.NewStyle().Width(6).Render(""),
+			navBlock,
+			lipgloss.NewStyle().Width(6).Render(""),
+			nvimBlock,
+		)
+	} else {
+		topRow := lipgloss.JoinHorizontal(lipgloss.Top, usageBlock, lipgloss.NewStyle().Width(4).Render(""), navBlock)
+		guides = lipgloss.JoinVertical(lipgloss.Left,
+			topRow,
+			lipgloss.NewStyle().Height(1).Render(""),
+			nvimBlock,
+		)
+	}
 
 	content := lipgloss.JoinVertical(lipgloss.Center,
 		logo,
@@ -540,14 +662,14 @@ func (m Model) viewEmptyState() string {
 	)
 
 	var verticalPad string
-	if m.height > lipgloss.Height(content) {
-		lines := (m.height - lipgloss.Height(content)) / 2
+	if h > lipgloss.Height(content) {
+		lines := (h - lipgloss.Height(content)) / 2
 		verticalPad = strings.Repeat("\n", lines)
 	}
 
 	return lipgloss.JoinVertical(lipgloss.Top,
 		verticalPad,
-		lipgloss.PlaceHorizontal(m.width, lipgloss.Center, content),
+		lipgloss.PlaceHorizontal(w, lipgloss.Center, content),
 	)
 }
 

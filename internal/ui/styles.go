@@ -1,118 +1,74 @@
 package ui
 
-import (
-	"github.com/charmbracelet/lipgloss"
-	"github.com/oug-t/difi/internal/config"
-)
+import "github.com/charmbracelet/lipgloss"
 
 var (
-	// Config
-	CurrentConfig config.Config
+	// -- NORD PALETTE --
+	nord0  = lipgloss.Color("#2E3440") // Dark background
+	nord3  = lipgloss.Color("#4C566A") // Separators / Dimmed
+	nord4  = lipgloss.Color("#D8DEE9") // Main Text
+	nord11 = lipgloss.Color("#BF616A") // Red (Deleted)
+	nord14 = lipgloss.Color("#A3BE8C") // Green (Added)
+	nord9  = lipgloss.Color("#81A1C1") // Blue (Focus)
 
-	// Theme colors
-	ColorBorder   = lipgloss.AdaptiveColor{Light: "#D9DCCF", Dark: "#383838"}
-	ColorFocus    = lipgloss.AdaptiveColor{Light: "#000000", Dark: "#E5E5E5"}
-	ColorText     = lipgloss.AdaptiveColor{Light: "#1F1F1F", Dark: "#FFFFFF"}
-	ColorSubtle   = lipgloss.AdaptiveColor{Light: "#A8A8A8", Dark: "#D0D0D0"}
-	ColorCursorBg = lipgloss.AdaptiveColor{Light: "#E5E5E5", Dark: "#3E3E3E"}
-	ColorAccent   = lipgloss.AdaptiveColor{Light: "#00ADD8", Dark: "#00ADD8"} // Go blue
-
-	// Pane styles
+	// -- PANE STYLES --
 	PaneStyle = lipgloss.NewStyle().
-			Border(lipgloss.NormalBorder(), false, true, false, false).
-			BorderForeground(ColorBorder)
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(nord3). // Goal 1: Nord3 Separator
+			Padding(0, 1)
 
 	FocusedPaneStyle = PaneStyle.Copy().
-				BorderForeground(ColorFocus)
+				BorderForeground(nord9)
 
-	DiffStyle = lipgloss.NewStyle().Padding(0, 0)
-	ItemStyle = lipgloss.NewStyle().PaddingLeft(2)
+	// -- TOP BAR STYLES (Goal 2) --
+	TopBarStyle = lipgloss.NewStyle().
+			Background(nord0).
+			Foreground(nord4).
+			Height(1)
 
-	// List styles
-	SelectedItemStyle = lipgloss.NewStyle().
-				PaddingLeft(1).
-				Background(ColorCursorBg).
-				Foreground(ColorText).
-				Bold(true).
-				Width(1000)
+	TopInfoStyle = lipgloss.NewStyle().
+			Bold(true).
+			Padding(0, 1)
 
-	SelectedBlockStyle = lipgloss.NewStyle().
-				Background(ColorCursorBg).
-				Foreground(ColorText).
-				Bold(true).
+	TopStatsAddedStyle = lipgloss.NewStyle().
+				Foreground(nord14).
 				PaddingLeft(1)
 
-	// Icon styles
-	FolderIconStyle = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "#F7B96E", Dark: "#E5C07B"})
-	FileIconStyle   = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "#969696", Dark: "#ABB2BF"})
+	TopStatsDeletedStyle = lipgloss.NewStyle().
+				Foreground(nord11).
+				PaddingLeft(1).
+				PaddingRight(1)
 
-	// Diff view styles
-	LineNumberStyle = lipgloss.NewStyle().
-			Foreground(ColorSubtle).
-			PaddingRight(1).
-			Width(4)
+	// -- TREE STYLES --
+	DirectoryStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("99"))
+	FileStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("252"))
 
-	DiffSelectionStyle = lipgloss.NewStyle().
-				Background(ColorCursorBg).
-				Width(1000)
+	// -- DIFF VIEW STYLES --
+	DiffStyle          = lipgloss.NewStyle().Padding(0, 0)
+	DiffSelectionStyle = lipgloss.NewStyle().Background(lipgloss.Color("237")).Foreground(lipgloss.Color("255"))
+	LineNumberStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Width(4).Align(lipgloss.Right).MarginRight(1)
 
-	// Status bar colors
-	ColorBarBg = lipgloss.AdaptiveColor{Light: "#F2F2F2", Dark: "#1F1F1F"}
-	ColorBarFg = lipgloss.AdaptiveColor{Light: "#6E6E6E", Dark: "#9E9E9E"}
+	// -- EMPTY STATE STYLES --
+	EmptyLogoStyle   = lipgloss.NewStyle().Foreground(nord9).Bold(true).MarginBottom(1)
+	EmptyDescStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("240")).MarginBottom(1)
+	EmptyStatusStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("245")).MarginBottom(2)
+	EmptyHeaderStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Bold(true).MarginBottom(1)
+	EmptyCodeStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
 
-	// Status bar styles
-	StatusBarStyle = lipgloss.NewStyle().
-			Foreground(ColorBarFg).
-			Background(ColorBarBg).
-			Padding(0, 1)
+	// -- HELPER STYLES --
+	HelpDrawerStyle = lipgloss.NewStyle().Border(lipgloss.NormalBorder(), true, false, false, false).BorderForeground(nord3).Padding(1, 2)
+	HelpTextStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("241")).MarginRight(2)
 
-	StatusKeyStyle = lipgloss.NewStyle().
-			Foreground(ColorText).
-			Background(ColorBarBg).
-			Bold(true).
-			Padding(0, 1)
+	// -- BOTTOM STATUS BAR STYLES --
+	StatusBarStyle     = lipgloss.NewStyle().Background(nord0).Foreground(nord4).Height(1)
+	StatusKeyStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("241")).Padding(0, 1)
+	StatusRepoStyle    = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#7aa2f7")).Padding(0, 1)
+	StatusBranchStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("#bb9af7")).Padding(0, 1)
+	StatusAddedStyle   = lipgloss.NewStyle().Foreground(nord14).Padding(0, 1)
+	StatusDeletedStyle = lipgloss.NewStyle().Foreground(nord11).Padding(0, 1)
+	StatusDividerStyle = lipgloss.NewStyle().Foreground(nord3).Padding(0, 1)
 
-	StatusDividerStyle = lipgloss.NewStyle().
-				Foreground(ColorSubtle).
-				Background(ColorBarBg).
-				Padding(0, 0)
-
-	// Help styles
-	HelpTextStyle = lipgloss.NewStyle().
-			Foreground(ColorSubtle).
-			Padding(0, 1)
-
-	HelpDrawerStyle = lipgloss.NewStyle().
-			Border(lipgloss.NormalBorder(), true, false, false, false).
-			BorderForeground(ColorBorder).
-			Padding(1, 2)
-
-	// Empty/landing styles
-	EmptyLogoStyle = lipgloss.NewStyle().
-			Foreground(ColorAccent).
-			Bold(true).
-			PaddingBottom(1)
-
-	EmptyDescStyle = lipgloss.NewStyle().
-			Foreground(ColorSubtle).
-			PaddingBottom(2)
-
-	EmptyStatusStyle = lipgloss.NewStyle().
-				Foreground(ColorText).
-				Background(ColorCursorBg).
-				Padding(0, 2).
-				MarginBottom(2)
-
-	EmptyCodeStyle = lipgloss.NewStyle().
-			Foreground(ColorSubtle).
-			MarginLeft(2)
-
-	EmptyHeaderStyle = lipgloss.NewStyle().
-				Foreground(ColorText).
-				Bold(true).
-				MarginBottom(1)
+	ColorText = lipgloss.Color("252")
 )
 
-func InitStyles(cfg config.Config) {
-	CurrentConfig = cfg
-}
+func InitStyles(cfg interface{}) {}
