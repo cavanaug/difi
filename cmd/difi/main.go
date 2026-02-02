@@ -32,7 +32,7 @@ func main() {
 		os.Exit(0)
 	}
 
-	target := "main"
+	target := "HEAD"
 	if flag.NArg() > 0 {
 		target = flag.Arg(0)
 	}
