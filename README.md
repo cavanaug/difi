@@ -69,9 +69,7 @@ difi
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
-## Integrations
-
-#### Neovim
+## Neovim Integration
 
 Get the ultimate review experience with **[difi.nvim](https://github.com/oug-t/difi.nvim)**.
 
@@ -85,6 +83,22 @@ Get the ultimate review experience with **[difi.nvim](https://github.com/oug-t/d
     <img src="https://img.shields.io/badge/Get_difi.nvim-57A143?style=for-the-badge&logo=neovim&logoColor=white" alt="Get difi.nvim" />
   </a>
 </p>
+
+<p align="right">(<a href="#readme-top">back to top</a>)</p>
+
+## Git Integration
+
+To use `difi` as a native git command (e.g., `git difi`), add it as an alias in your global git config:
+
+```bash
+git config --global alias.difi '!difi'
+```
+Now you can run it directly from git:
+```bash
+git difi
+```
+
+<p align="right">(<a href="#readme-top">back to top</a>)</p>
 
 ## Contributing
 
@@ -117,6 +131,7 @@ Contributions are especially welcome in:
 ---
 
 <p align="center"> Made with ❤️ by <a href="https://github.com/oug-t">oug-t</a> </p>
+
 
 
 
