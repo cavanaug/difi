@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <img src="https://github.com/user-attachments/assets/70c177cb-9ad8-4e53-8837-f5e7b3f22fa0" alt="difi" />
+  <img src= "https://github.com/user-attachments/assets/2cecb580-fe35-47ae-886b-8315226d122b" alt="difi_demo" />
 </p>
 
 ## Why difi?
@@ -37,6 +37,20 @@ brew install difi
 
 ```bash
 go install github.com/oug-t/difi/cmd/difi@latest
+```
+
+#### AUR (Arch Linux)
+
+**Binary (pre-built):**
+
+```bash
+pikaur -S difi-bin
+```
+
+**Build from source:**
+
+```bash
+pikaur -S difi
 ```
 
 #### Manual (Linux / Windows)
@@ -104,6 +118,22 @@ Get the ultimate review experience with **[difi.nvim](https://github.com/oug-t/d
     <img src="https://img.shields.io/badge/Get_difi.nvim-57A143?style=for-the-badge&logo=neovim&logoColor=white" alt="Get difi.nvim" />
   </a>
 </p>
+
+<p align="right">(<a href="#readme-top">back to top</a>)</p>
+
+## Git Integration
+
+To use `difi` as a native git command (e.g., `git difi`), add it as an alias in your global git config:
+
+```bash
+git config --global alias.difi '!difi'
+```
+
+Now you can run it directly from git:
+
+```bash
+git difi
+```
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
