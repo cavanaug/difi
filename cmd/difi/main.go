@@ -18,13 +18,14 @@ func main() {
 	plain := flag.Bool("plain", false, "Print a plain, non-interactive summary and exit")
 
 	flag.Usage = func() {
-		fmt.Fprintf(os.Stderr, "Usage: difi [flags] [target-branch]\n")
-		fmt.Fprintf(os.Stderr, "\nFlags:\n")
+		w := os.Stderr
+		fmt.Fprintln(w, "Usage: difi [flags] [target-branch]")
+		fmt.Fprintln(w, "\nFlags:")
 		flag.PrintDefaults()
-		fmt.Fprintf(os.Stderr, "\nExamples:\n")
-		fmt.Fprintf(os.Stderr, "  difi              # Diff against main\n")
-		fmt.Fprintf(os.Stderr, "  difi develop      # Diff against develop\n")
-		fmt.Fprintf(os.Stderr, "  difi HEAD~1       # Diff against last commit\n")
+		fmt.Fprintln(w, "\nExamples:")
+		fmt.Fprintln(w, "  difi             # Diff against default")
+		fmt.Fprintln(w, "  difi develop     # Diff against develop")
+		fmt.Fprintln(w, "  difi HEAD~1      # Diff against last commit")
 	}
 
 	flag.Parse()
@@ -40,6 +41,7 @@ func main() {
 	}
 
 	if *plain {
+		// Uses --name-status for a concise, machine-readable summary suitable for CI
 		cmd := exec.Command("git", "diff", "--name-status", fmt.Sprintf("%s...HEAD", target))
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
