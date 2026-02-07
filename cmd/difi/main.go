@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"os/exec"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/oug-t/difi/internal/config"
@@ -14,6 +15,7 @@ var version = "dev"
 
 func main() {
 	showVersion := flag.Bool("version", false, "Show version")
+	plain := flag.Bool("plain", false, "Print a plain, non-interactive summary and exit")
 
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage: difi [flags] [target-branch]\n")
@@ -35,6 +37,16 @@ func main() {
 	target := "HEAD"
 	if flag.NArg() > 0 {
 		target = flag.Arg(0)
+	}
+
+	if *plain {
+		cmd := exec.Command("git", "diff", "--name-status", fmt.Sprintf("%s...HEAD", target))
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		if err := cmd.Run(); err != nil {
+			os.Exit(1)
+		}
+		os.Exit(0)
 	}
 
 	cfg := config.Load()
