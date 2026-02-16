@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <img src= "https://github.com/user-attachments/assets/2cecb580-fe35-47ae-886b-8315226d122b" alt="difi_demo" />
+  <img src= "https://github.com/user-attachments/assets/3695cfd2-148c-463d-9630-547d152adde0" alt="difi_demo" />
 </p>
 
 ## Why difi?
@@ -29,7 +29,6 @@
 #### Homebrew (macOS & Linux)
 
 ```bash
-brew tap oug-t/difi
 brew install difi
 ```
 
