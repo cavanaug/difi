@@ -33,7 +33,15 @@ func GetRepoName() string {
 }
 
 func ListChangedFiles(targetBranch string) ([]string, error) {
-	cmd := exec.Command("hg", "status", "--rev", targetBranch, "--no-status")
+	var cmd *exec.Cmd
+	// For working directory changes, use status without --rev
+	// For specific revisions, use status with --rev
+	if targetBranch == "tip" || targetBranch == "." || targetBranch == "" {
+		cmd = exec.Command("hg", "status", "--no-status")
+	} else {
+		cmd = exec.Command("hg", "status", "--rev", targetBranch, "--no-status")
+	}
+
 	out, err := cmd.Output()
 	if err != nil {
 		return nil, err
@@ -47,7 +55,16 @@ func ListChangedFiles(targetBranch string) ([]string, error) {
 
 func DiffCmd(targetBranch, path string) tea.Cmd {
 	return func() tea.Msg {
-		out, err := exec.Command("hg", "diff", "--rev", targetBranch, path).Output()
+		var cmd *exec.Cmd
+		// For working directory diffs, don't use --rev
+		// For specific revisions, use --rev
+		if targetBranch == "tip" || targetBranch == "." || targetBranch == "" {
+			cmd = exec.Command("hg", "diff", path)
+		} else {
+			cmd = exec.Command("hg", "diff", "--rev", targetBranch, path)
+		}
+
+		out, err := cmd.Output()
 		if err != nil {
 			return DiffMsg{Content: "Error fetching diff: " + err.Error()}
 		}
@@ -82,7 +99,14 @@ func OpenEditorCmd(path string, lineNumber int, targetBranch string) tea.Cmd {
 }
 
 func DiffStats(targetBranch string) (added int, deleted int, err error) {
-	cmd := exec.Command("hg", "diff", "--rev", targetBranch, "--stat")
+	var cmd *exec.Cmd
+	// For working directory diffs, don't use --rev
+	if targetBranch == "tip" || targetBranch == "." || targetBranch == "" {
+		cmd = exec.Command("hg", "diff", "--stat")
+	} else {
+		cmd = exec.Command("hg", "diff", "--rev", targetBranch, "--stat")
+	}
+
 	out, err := cmd.Output()
 	if err != nil {
 		return 0, 0, fmt.Errorf("hg diff stats error: %w", err)
