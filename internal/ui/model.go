@@ -636,8 +636,10 @@ func (m Model) renderTopBar() string {
 	branches := fmt.Sprintf(" %s ➜ %s", m.currentBranch, m.targetBranch)
 	// Determine VCS type
 	vcsType := "git"
-	if _, isHg := m.vcs.(vcs.HgVCS); isHg {
-		vcsType = "hg"
+	if m.vcs != nil {
+		if _, isHg := m.vcs.(vcs.HgVCS); isHg {
+			vcsType = "hg"
+		}
 	}
 	vcsInfo := fmt.Sprintf("[%s]", vcsType)
 
