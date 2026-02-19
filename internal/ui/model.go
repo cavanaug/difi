@@ -641,9 +641,7 @@ func (m Model) renderTopBar() string {
 			vcsType = "hg"
 		}
 	}
-	vcsInfo := fmt.Sprintf("[%s]", vcsType)
-
-	info := fmt.Sprintf("%s %s   %s", repo, vcsInfo, branches)
+	info := fmt.Sprintf("%s:%s %s", repo, vcsType, branches)
 	leftSide := TopInfoStyle.Render(info)
 
 	middle := ""
