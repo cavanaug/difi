@@ -3,8 +3,6 @@ package ui
 import (
 	"fmt"
 	"math"
-	"os"
-	"os/exec"
 	"regexp"
 	"strconv"
 	"strings"
@@ -16,8 +14,8 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/oug-t/difi/internal/config"
-	"github.com/oug-t/difi/internal/git"
 	"github.com/oug-t/difi/internal/tree"
+	"github.com/oug-t/difi/internal/vcs"
 )
 
 type Focus int
@@ -62,16 +60,17 @@ type Model struct {
 	width, height int
 
 	pipedDiff string
+	vcs       vcs.VCS
 }
 
-func NewModel(cfg config.Config, targetBranch string, pipedDiff string) Model {
+func NewModel(cfg config.Config, targetBranch string, pipedDiff string, vcsClient vcs.VCS) Model {
 	InitStyles(cfg)
 
 	var files []string
 	if pipedDiff != "" {
-		files = git.ParseFilesFromDiff(pipedDiff)
+		files = vcsClient.ParseFilesFromDiff(pipedDiff)
 	} else {
-		files, _ = git.ListChangedFiles(targetBranch)
+		files, _ = vcsClient.ListChangedFiles(targetBranch)
 	}
 
 	t := tree.New(files)
@@ -93,13 +92,14 @@ func NewModel(cfg config.Config, targetBranch string, pipedDiff string) Model {
 		treeDelegate:  delegate,
 		diffViewport:  viewport.New(0, 0),
 		focus:         FocusTree,
-		currentBranch: git.GetCurrentBranch(),
+		currentBranch: vcsClient.GetCurrentBranch(),
 		targetBranch:  targetBranch,
-		repoName:      git.GetRepoName(),
+		repoName:      vcsClient.GetRepoName(),
 		showHelp:      false,
 		inputBuffer:   "",
 		pendingZ:      false,
 		pipedDiff:     pipedDiff,
+		vcs:           vcsClient,
 	}
 
 	if len(items) > 0 {
@@ -118,23 +118,23 @@ func (m Model) Init() tea.Cmd {
 	if m.selectedPath != "" {
 		if m.pipedDiff != "" {
 			cmds = append(cmds, func() tea.Msg {
-				return git.DiffMsg{Content: git.ExtractFileDiff(m.pipedDiff, m.selectedPath)}
+				return vcs.DiffMsg{Content: m.vcs.ExtractFileDiff(m.pipedDiff, m.selectedPath)}
 			})
 		} else {
-			cmds = append(cmds, git.DiffCmd(m.targetBranch, m.selectedPath))
+			cmds = append(cmds, m.vcs.DiffCmd(m.targetBranch, m.selectedPath))
 		}
 	}
 
 	if m.pipedDiff == "" {
-		cmds = append(cmds, fetchStatsCmd(m.targetBranch))
+		cmds = append(cmds, m.fetchStatsCmd(m.targetBranch))
 	}
 
 	return tea.Batch(cmds...)
 }
 
-func fetchStatsCmd(target string) tea.Cmd {
+func (m Model) fetchStatsCmd(target string) tea.Cmd {
 	return func() tea.Msg {
-		added, deleted, err := git.DiffStats(target)
+		added, deleted, err := m.vcs.DiffStats(target)
 		if err != nil {
 			return nil
 		}
@@ -248,11 +248,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.selectedPath != "" {
 				line := 0
 				if m.focus == FocusDiff {
-					line = git.CalculateFileLine(m.diffContent, m.diffCursor)
+					line = m.vcs.CalculateFileLine(m.diffContent, m.diffCursor)
 				} else {
-					line = git.CalculateFileLine(m.diffContent, 0)
+					line = m.vcs.CalculateFileLine(m.diffContent, 0)
 				}
-				return m, openFugitive(m.selectedPath, line)
+				return m, m.vcs.OpenEditorCmd(m.selectedPath, line, m.targetBranch)
 			}
 
 		case "e":
@@ -263,12 +263,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 				line := 0
 				if m.focus == FocusDiff {
-					line = git.CalculateFileLine(m.diffContent, m.diffCursor)
+					line = m.vcs.CalculateFileLine(m.diffContent, m.diffCursor)
 				} else {
-					line = git.CalculateFileLine(m.diffContent, 0)
+					line = m.vcs.CalculateFileLine(m.diffContent, 0)
 				}
 				m.inputBuffer = ""
-				return m, openFugitive(m.selectedPath, line)
+				return m, m.vcs.OpenEditorCmd(m.selectedPath, line, m.targetBranch)
 			}
 
 		case "z":
@@ -376,17 +376,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.diffViewport.GotoTop()
 				if m.pipedDiff != "" {
 					cmds = append(cmds, func() tea.Msg {
-						return git.DiffMsg{Content: git.ExtractFileDiff(m.pipedDiff, m.selectedPath)}
+						return vcs.DiffMsg{Content: m.vcs.ExtractFileDiff(m.pipedDiff, m.selectedPath)}
 					})
 				} else {
-					cmds = append(cmds, git.DiffCmd(m.targetBranch, m.selectedPath))
+					cmds = append(cmds, m.vcs.DiffCmd(m.targetBranch, m.selectedPath))
 				}
 			}
 		}
 	}
 
 	switch msg := msg.(type) {
-	case git.DiffMsg:
+	case vcs.DiffMsg:
 		fullLines := strings.Split(msg.Content, "\n")
 
 		var cleanLines []string
@@ -422,28 +422,18 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.diffViewport.SetContent(newContent)
 		m.diffViewport.GotoTop()
 
-	case git.EditorFinishedMsg:
+	case vcs.EditorFinishedMsg:
 		if m.pipedDiff != "" {
 			return m, func() tea.Msg {
-				return git.DiffMsg{Content: git.ExtractFileDiff(m.pipedDiff, m.selectedPath)}
+				return vcs.DiffMsg{Content: m.vcs.ExtractFileDiff(m.pipedDiff, m.selectedPath)}
 			}
 		}
-		return m, git.DiffCmd(m.targetBranch, m.selectedPath)
+		return m, m.vcs.DiffCmd(m.targetBranch, m.selectedPath)
 	}
 
 	return m, tea.Batch(cmds...)
 }
 
-func openFugitive(path string, line int) tea.Cmd {
-	lineArg := fmt.Sprintf("+%d", line)
-	c := exec.Command("nvim", lineArg, "-c", "Gvdiffsplit!", path)
-	c.Stdin = os.Stdin
-	c.Stdout = os.Stdout
-	c.Stderr = os.Stderr
-	return tea.ExecProcess(c, func(err error) tea.Msg {
-		return git.EditorFinishedMsg{}
-	})
-}
 
 func (m *Model) centerDiffCursor() {
 	halfScreen := m.diffViewport.Height / 2
@@ -592,7 +582,7 @@ func (m Model) View() string {
 				if mode != "hidden" {
 					isCursor := (i == m.diffCursor)
 					if isCursor && mode == "hybrid" {
-						realLine := git.CalculateFileLine(m.diffContent, m.diffCursor)
+						realLine := m.vcs.CalculateFileLine(m.diffContent, m.diffCursor)
 						numStr = fmt.Sprintf("%d", realLine)
 					} else if isCursor && mode == "relative" {
 						numStr = "0"
