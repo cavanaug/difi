@@ -634,7 +634,14 @@ func (m Model) View() string {
 func (m Model) renderTopBar() string {
 	repo := fmt.Sprintf(" %s", m.repoName)
 	branches := fmt.Sprintf(" %s ➜ %s", m.currentBranch, m.targetBranch)
-	info := fmt.Sprintf("%s   %s", repo, branches)
+	// Determine VCS type
+	vcsType := "git"
+	if _, isHg := m.vcs.(vcs.HgVCS); isHg {
+		vcsType = "hg"
+	}
+	vcsInfo := fmt.Sprintf("[%s]", vcsType)
+
+	info := fmt.Sprintf("%s %s   %s", repo, vcsInfo, branches)
 	leftSide := TopInfoStyle.Render(info)
 
 	middle := ""
@@ -690,6 +697,10 @@ func (m Model) renderHelpDrawer() string {
 		HelpTextStyle.Render("H/M/L Move Cursor"),
 		HelpTextStyle.Render("e     Edit File"),
 	)
+	col5 := lipgloss.JoinVertical(lipgloss.Left,
+		HelpTextStyle.Render("Supports Git & Hg"),
+		HelpTextStyle.Render("--vcs git/hg"),
+	)
 
 	return HelpDrawerStyle.Copy().
 		Width(m.width).
@@ -701,24 +712,29 @@ func (m Model) renderHelpDrawer() string {
 			col3,
 			lipgloss.NewStyle().Width(4).Render(""),
 			col4,
+			lipgloss.NewStyle().Width(4).Render(""),
+			col5,
 		))
 }
 
 func (m Model) renderEmptyState(w, h int, statusMsg string) string {
 	logo := EmptyLogoStyle.Render("difi")
-	desc := EmptyDescStyle.Render("A calm, focused way to review Git diffs.")
+	desc := EmptyDescStyle.Render("A calm, focused way to review Git & Mercurial diffs.")
 	status := EmptyStatusStyle.Render(statusMsg)
 
 	usageHeader := EmptyHeaderStyle.Render("Usage Patterns")
 	cmd1 := lipgloss.NewStyle().Foreground(ColorText).Render("difi")
-	desc1 := EmptyCodeStyle.Render("Diff against main")
-	cmd2 := lipgloss.NewStyle().Foreground(ColorText).Render("difi dev")
-	desc2 := EmptyCodeStyle.Render("Diff against branch")
+	desc1 := EmptyCodeStyle.Render("Auto-detect VCS, diff against main/tip")
+	cmd2 := lipgloss.NewStyle().Foreground(ColorText).Render("difi --vcs git")
+	desc2 := EmptyCodeStyle.Render("Force Git mode")
+	cmd3 := lipgloss.NewStyle().Foreground(ColorText).Render("difi --vcs hg")
+	desc3 := EmptyCodeStyle.Render("Force Mercurial mode")
 
 	usageBlock := lipgloss.JoinVertical(lipgloss.Left,
 		usageHeader,
 		lipgloss.JoinHorizontal(lipgloss.Left, cmd1, "    ", desc1),
 		lipgloss.JoinHorizontal(lipgloss.Left, cmd2, "    ", desc2),
+		lipgloss.JoinHorizontal(lipgloss.Left, cmd3, "    ", desc3),
 	)
 
 	navHeader := EmptyHeaderStyle.Render("Navigation")
