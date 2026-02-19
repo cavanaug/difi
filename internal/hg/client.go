@@ -59,9 +59,9 @@ func DiffCmd(targetBranch, path string) tea.Cmd {
 		// For working directory diffs, don't use --rev
 		// For specific revisions, use --rev
 		if targetBranch == "tip" || targetBranch == "." || targetBranch == "" {
-			cmd = exec.Command("hg", "diff", path)
+			cmd = exec.Command("hg", "diff", "--color=always", path)
 		} else {
-			cmd = exec.Command("hg", "diff", "--rev", targetBranch, path)
+			cmd = exec.Command("hg", "diff", "--color=always", "--rev", targetBranch, path)
 		}
 
 		out, err := cmd.Output()
