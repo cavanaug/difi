@@ -1,5 +1,3 @@
-<a id="readme-top"></a>
-
 <h1 align="center"><code>difi</code></h1>
 <p align="center"><em>Review and refine Git diffs before you push</em></p>
 
@@ -17,12 +15,10 @@
 
 **git diff** shows changes. **difi** helps you _review_ them.
 
-- ⚡️ **Instant** — Built in Go. Launches immediately with no daemon or indexing.
-- 🎨 **Structured** — A clean file tree and focused diffs for fast mental parsing.
-- 🧠 **Editor-Aware** — Jump straight to the exact line in `nvim`/`vim` to fix issues.
-- ⌨️ **Keyboard-First** — Navigate everything with `h j k l`. No mouse required.
-
-<p align="right">(<a href="#readme-top">back to top</a>)</p>
+- ⏱️ **Instant** — Built in Go. Launches immediately with no daemon or indexing.
+- 🗂️ **Structured** — A clean file tree and focused diffs for fast mental parsing.
+- ⚙️ **Adaptable** — Auto-detects your VCS (Git/Mercurial) and easily configures to match your terminal's theme and style.
+- ⌨️ **Vim Integration** — Navigate natively with `h j k l` and press `e` to jump straight to the exact line in Neovim for frictionless editing.
 
 ## Installation
 
@@ -56,8 +52,6 @@ pikaur -S difi
 
 - Download the binary from Releases and add it to your `$PATH`.
 
-<p align="right">(<a href="#readme-top">back to top</a>)</p>
-
 ## Workflow
 
 - Run difi in any Git repository against main:
@@ -82,8 +76,6 @@ jj diff --git | difi
 git diff | difi
 ```
 
-<p align="right">(<a href="#readme-top">back to top</a>)</p>
-
 ## Controls
 
 | Key           | Action                                       |
@@ -95,7 +87,31 @@ git diff | difi
 | `?`           | Toggle help drawer                           |
 | `q`           | Quit                                         |
 
-<p align="right">(<a href="#readme-top">back to top</a>)</p>
+## Configuration
+
+`difi` can be configured using a YAML file located at `~/.config/difi/config.yaml`. If the file doesn't exist, `difi` will use sensible defaults.
+
+### Example `config.yaml`
+
+```yaml
+editor: "nvim"
+
+ui:
+  line_numbers: "hybrid"
+  theme: "default"
+  diff_add_bg: "#2b3328" # Optional: Custom background for added lines
+  diff_del_bg: "#4a2323" # Optional: Custom background for deleted lines
+```
+
+### Options
+
+| Key | Default | Description |
+| :--- | :--- | :--- |
+| `editor` | `$DIFI_EDITOR`, `$EDITOR`, `$VISUAL`, or `vi` | The editor to open when pressing `e` on a file. |
+| `ui.line_numbers` | `"hybrid"` | The style of line numbers in the diff view. |
+| `ui.theme` | `"default"` | The core theme used for syntax highlighting. |
+| `ui.diff_add_bg` | `""` | Hex code or terminal color for added line backgrounds. |
+| `ui.diff_del_bg` | `""` | Hex code or terminal color for deleted line backgrounds. |
 
 ## Integrations
 
@@ -134,8 +150,6 @@ Get the ultimate review experience with **[difi.nvim](https://github.com/oug-t/d
   </a>
 </p>
 
-<p align="right">(<a href="#readme-top">back to top</a>)</p>
-
 ## Git Integration
 
 To use `difi` as a native git command (e.g., `git difi`), add it as an alias in your global git config:
@@ -149,8 +163,6 @@ Now you can run it directly from git:
 ```bash
 git difi
 ```
-
-<p align="right">(<a href="#readme-top">back to top</a>)</p>
 
 ## Contributing
 
@@ -166,8 +178,6 @@ Contributions are especially welcome in:
 - UI polish and accessibility
 - Windows support
 
-<p align="right">(<a href="#readme-top">back to top</a>)</p>
-
 ## Star History
 
 <a href="https://star-history.com/#oug-t/difi&Date">
@@ -178,9 +188,3 @@ Contributions are especially welcome in:
     </picture>
   </a>
 </div>
-
-<p align="right">(<a href="#readme-top">back to top</a>)</p>
-
----
-
-<p align="center"> Made with ❤️ by <a href="https://github.com/oug-t">oug-t</a> </p>
